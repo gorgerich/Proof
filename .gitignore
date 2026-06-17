@@ -4,3 +4,4 @@ dist/
 landing-*.png
 detail-*.png
 mobile-*.png
+.vercel
