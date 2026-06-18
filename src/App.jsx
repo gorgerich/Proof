@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 
 const candidateMatch = {
+  id: "job-product-fintech",
   role: "Продуктовый менеджер",
   company: "Финтех-сервис",
   location: "Москва / гибрид",
@@ -51,6 +52,7 @@ const candidateMatch = {
 };
 
 const employerCandidate = {
+  id: "candidate-growth-product",
   role: "Продуктовый менеджер роста",
   location: "Москва / удалённо",
   salary: "280-330 тыс. ₽",
@@ -166,13 +168,79 @@ const employerNav = [
   { label: "Чаты", icon: MessageCircle, screen: "mutual-match" }
 ];
 
+const fallbackData = {
+  candidateMatch,
+  employerCandidate,
+  detailBlocks,
+  stats: {
+    candidateTitle: "Нашли 4 варианта",
+    employerTitle: "12 человек подходят под задачу",
+    employerHidden:
+      "143 профиля скрыли: не совпали по опыту, вилке или формату."
+  },
+  backend: {
+    source: "local",
+    database: false
+  }
+};
+
+const detailIcons = [BadgeCheck, FileText, ShieldAlert];
+
+function withDetailIcons(blocks = detailBlocks) {
+  return blocks.map((block, index) => ({
+    ...block,
+    icon: block.icon ?? detailIcons[index] ?? BadgeCheck
+  }));
+}
+
+async function postJson(path, payload) {
+  try {
+    const response = await fetch(path, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+    return await response.json();
+  } catch (error) {
+    return null;
+  }
+}
+
 function App() {
   const [screen, setScreen] = useState("welcome");
   const [mode, setMode] = useState("candidate");
+  const [backendData, setBackendData] = useState(fallbackData);
 
   useEffect(() => {
     requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0 }));
   }, [screen]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch("/api/bootstrap")
+      .then((response) => {
+        if (!response.ok) throw new Error(`Bootstrap failed: ${response.status}`);
+        return response.json();
+      })
+      .then((data) => {
+        if (!cancelled) {
+          setBackendData((current) => ({
+            ...current,
+            ...data
+          }));
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const Screen = useMemo(() => {
     const map = {
@@ -195,6 +263,20 @@ function App() {
     "employer-brief"
   ].includes(screen);
   const navItems = mode === "employer" ? employerNav : candidateNav;
+  const data = useMemo(
+    () => ({
+      ...backendData,
+      detailBlocks: withDetailIcons(backendData.detailBlocks)
+    }),
+    [backendData]
+  );
+
+  const saveCandidateProfile = (payload) =>
+    postJson("/api/candidate-profile", payload);
+  const saveEmployerBrief = (payload) =>
+    postJson("/api/employer-brief", payload);
+  const recordDecision = (payload) =>
+    postJson("/api/decisions", payload);
 
   return (
     <main className="app-shell">
@@ -211,8 +293,12 @@ function App() {
           >
             <Screen
               mode={mode}
+              data={data}
               setMode={setMode}
               setScreen={setScreen}
+              saveCandidateProfile={saveCandidateProfile}
+              saveEmployerBrief={saveEmployerBrief}
+              recordDecision={recordDecision}
             />
           </motion.section>
         </AnimatePresence>
@@ -335,7 +421,7 @@ function RoleChoiceScreen({ setMode, setScreen }) {
   );
 }
 
-function CandidateOnboarding({ setScreen }) {
+function CandidateOnboarding({ setScreen, saveCandidateProfile }) {
   const [step, setStep] = useState(0);
   const [sheetOpen, setSheetOpen] = useState(true);
   const current = onboardingSteps[step];
@@ -409,8 +495,16 @@ function CandidateOnboarding({ setScreen }) {
         <button
           className="main-cta"
           onClick={() => {
-            if (step === onboardingSteps.length - 1) setScreen("candidate-home");
-            else setStep((value) => value + 1);
+            if (step === onboardingSteps.length - 1) {
+              void saveCandidateProfile({
+                completed: true,
+                stepCount: onboardingSteps.length,
+                source: "mobile-onboarding"
+              });
+              setScreen("candidate-home");
+            } else {
+              setStep((value) => value + 1);
+            }
           }}
         >
           {step === onboardingSteps.length - 1 ? "К ленте" : "Дальше"}
@@ -421,19 +515,31 @@ function CandidateOnboarding({ setScreen }) {
   );
 }
 
-function CandidateHome({ setScreen }) {
+function CandidateHome({ setScreen, data, recordDecision }) {
+  const match = data.candidateMatch;
+
   return (
     <div className="home-screen">
       <ScreenTitle
         eyebrow="сегодня"
-        title="Нашли 4 варианта"
-        text={candidateMatch.hidden}
+        title={data.stats?.candidateTitle ?? fallbackData.stats.candidateTitle}
+        text={match.hidden}
       />
 
-      <CandidateJobCard setScreen={setScreen} />
+      <CandidateJobCard match={match} />
 
       <div className="feed-actions sticky-actions inline">
-        <button className="secondary-cta">
+        <button
+          className="secondary-cta"
+          onClick={() =>
+            recordDecision({
+              actor: "candidate",
+              targetId: match.id,
+              action: "pass",
+              data: { screen: "candidate-home" }
+            })
+          }
+        >
           <X size={17} />
           Не моё
         </button>
@@ -443,13 +549,13 @@ function CandidateHome({ setScreen }) {
         </button>
       </div>
 
-      <HiddenReasonCard />
+      <HiddenReasonCard match={match} />
       <ProfileNudge />
     </div>
   );
 }
 
-function CandidateJobCard({ setScreen }) {
+function CandidateJobCard({ match }) {
   const x = useMotionValue(0);
   const y = useMotionValue(0);
   const rotate = useTransform(x, [-160, 0, 160], [-4, 0, 4]);
@@ -480,23 +586,24 @@ function CandidateJobCard({ setScreen }) {
       </motion.span>
 
       <div className="card-top">
-        <span className="match-badge">{candidateMatch.badge}</span>
-        <span className="fit-muted">{candidateMatch.fit}</span>
+        <span className="match-badge">{match.badge}</span>
+        <span className="fit-muted">{match.fit}</span>
       </div>
-      <h2>{candidateMatch.role}</h2>
-      <p className="company-line">{candidateMatch.company} · {candidateMatch.location}</p>
-      <p className="salary-line">{candidateMatch.salary}</p>
+      <h2>{match.role}</h2>
+      <p className="company-line">{match.company} · {match.location}</p>
+      <p className="salary-line">{match.salary}</p>
 
       <p className="quick-why">
-        Почему подходит: опыт с подпиской, совпадает вилка, нужен подход к росту.
+        Почему подходит: {match.why.slice(0, 3).join(", ")}.
       </p>
-      <CheckMini title="Что проверить" items={candidateMatch.checks} />
+      <CheckMini title="Что проверить" items={match.checks} />
     </motion.article>
   );
 }
 
-function MatchDetail({ setScreen }) {
+function MatchDetail({ setScreen, data, recordDecision }) {
   const [open, setOpen] = useState(0);
+  const match = data.candidateMatch;
 
   return (
     <div className="detail-screen">
@@ -508,13 +615,13 @@ function MatchDetail({ setScreen }) {
 
       <div className="compact-match">
         <span className="match-badge">Сильное совпадение</span>
-        <strong>{candidateMatch.role}</strong>
-        <span>{candidateMatch.company} · {candidateMatch.salary}</span>
-        <small>{candidateMatch.fit}</small>
+        <strong>{match.role}</strong>
+        <span>{match.company} · {match.salary}</span>
+        <small>{match.fit}</small>
       </div>
 
       <div className="accordion-stack">
-        {detailBlocks.map((block, index) => {
+        {data.detailBlocks.map((block, index) => {
           const Icon = block.icon;
           const isOpen = open === index;
           return (
@@ -552,10 +659,32 @@ function MatchDetail({ setScreen }) {
       </HumanNote>
 
       <div className="sticky-actions inline">
-        <button className="secondary-cta" onClick={() => setScreen("candidate-home")}>
+        <button
+          className="secondary-cta"
+          onClick={() => {
+            void recordDecision({
+              actor: "candidate",
+              targetId: match.id,
+              action: "pass",
+              data: { screen: "match-detail" }
+            });
+            setScreen("candidate-home");
+          }}
+        >
           Не моё
         </button>
-        <button className="main-cta" onClick={() => setScreen("mutual-match")}>
+        <button
+          className="main-cta"
+          onClick={() => {
+            void recordDecision({
+              actor: "candidate",
+              targetId: match.id,
+              action: "interested",
+              data: { screen: "match-detail" }
+            });
+            setScreen("mutual-match");
+          }}
+        >
           Интересно
           <HeartHandshake size={18} />
         </button>
@@ -564,7 +693,7 @@ function MatchDetail({ setScreen }) {
   );
 }
 
-function EmployerBrief({ setScreen }) {
+function EmployerBrief({ setScreen, saveEmployerBrief }) {
   return (
     <div className="employer-brief">
       <ScreenTitle
@@ -600,7 +729,18 @@ function EmployerBrief({ setScreen }) {
         свободу решений и честные ограничения команды.
       </HumanNote>
 
-      <button className="main-cta wide" onClick={() => setScreen("employer-shortlist")}>
+      <button
+        className="main-cta wide"
+        onClick={() => {
+          void saveEmployerBrief({
+            role: "Продуктовый менеджер роста",
+            mission: "Поднять удержание платных пользователей",
+            salary: "260-340 тыс. ₽",
+            format: "гибрид, Москва"
+          });
+          setScreen("employer-shortlist");
+        }}
+      >
         Смотреть кандидатов
         <ArrowRight size={18} />
       </button>
@@ -608,34 +748,57 @@ function EmployerBrief({ setScreen }) {
   );
 }
 
-function EmployerShortlist({ setScreen }) {
+function EmployerShortlist({ setScreen, data, recordDecision }) {
+  const candidate = data.employerCandidate;
+
   return (
     <div className="shortlist-screen">
       <ScreenTitle
         eyebrow="короткий список"
-        title="12 человек подходят под задачу"
-        text="143 профиля скрыли: не совпали по опыту, вилке или формату."
+        title={data.stats?.employerTitle ?? fallbackData.stats.employerTitle}
+        text={data.stats?.employerHidden ?? fallbackData.stats.employerHidden}
       />
 
       <article className="match-card employer">
         <div className="card-top">
-          <span className="match-badge">{employerCandidate.badge}</span>
-          <span className="fit-muted">{employerCandidate.fit}</span>
+          <span className="match-badge">{candidate.badge}</span>
+          <span className="fit-muted">{candidate.fit}</span>
         </div>
-        <h2>{employerCandidate.role}</h2>
-        <p className="company-line">{employerCandidate.location}</p>
-        <p className="salary-line">{employerCandidate.salary}</p>
+        <h2>{candidate.role}</h2>
+        <p className="company-line">{candidate.location}</p>
+        <p className="salary-line">{candidate.salary}</p>
 
-        <ReasonBlock title="Почему подходит" items={employerCandidate.why} />
-        <ReasonBlock title="Доказательства" items={employerCandidate.proof} />
-        <ReasonBlock title="Риски" items={employerCandidate.risks} tone="warm" />
+        <ReasonBlock title="Почему подходит" items={candidate.why} />
+        <ReasonBlock title="Доказательства" items={candidate.proof} />
+        <ReasonBlock title="Риски" items={candidate.risks} tone="warm" />
 
         <div className="card-actions">
-          <button className="secondary-cta">
+          <button
+            className="secondary-cta"
+            onClick={() =>
+              recordDecision({
+                actor: "employer",
+                targetId: candidate.id,
+                action: "pass",
+                data: { screen: "employer-shortlist" }
+              })
+            }
+          >
             <Minus size={17} />
             Пропустить
           </button>
-          <button className="main-cta" onClick={() => setScreen("mutual-match")}>
+          <button
+            className="main-cta"
+            onClick={() => {
+              void recordDecision({
+                actor: "employer",
+                targetId: candidate.id,
+                action: "want_to_talk",
+                data: { screen: "employer-shortlist" }
+              });
+              setScreen("mutual-match");
+            }}
+          >
             Хочу поговорить
             <MessageCircle size={17} />
           </button>
@@ -843,11 +1006,11 @@ function CasesStep() {
   );
 }
 
-function HiddenReasonCard() {
+function HiddenReasonCard({ match }) {
   return (
     <article className="hidden-card">
       <span>Почему мы это скрыли</span>
-      <p>{candidateMatch.hiddenReason}</p>
+      <p>{match.hiddenReason}</p>
       <small>Это не отказ. Просто сейчас совпадение слабое.</small>
     </article>
   );

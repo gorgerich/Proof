@@ -1,7 +1,11 @@
 node_modules/
 dist/
+.env
+.env.*
 .vercel/
 landing-*.png
 detail-*.png
 mobile-*.png
 .vercel
+.env*
+!.env.example
