@@ -1,4 +1,5 @@
 import { saveProfile } from "./_db.js";
+import { requireUser } from "./_auth.js";
 import { readJson, sendJson } from "./_utils.js";
 
 export default async function handler(req, res) {
@@ -7,11 +8,12 @@ export default async function handler(req, res) {
   }
 
   try {
+    const user = await requireUser(req);
     const body = await readJson(req);
-    const result = await saveProfile("candidate", body);
+    const result = await saveProfile("candidate", body, user.id);
     return sendJson(res, 200, result);
   } catch (error) {
-    return sendJson(res, 500, {
+    return sendJson(res, error.statusCode ?? 500, {
       error: "candidate_profile_failed",
       message: error.message
     });

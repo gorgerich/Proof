@@ -139,6 +139,7 @@ li {
 .status-pill {
   color: #09110f;
   background: var(--accent);
+  border: 0;
   border-radius: 999px;
   padding: 7px 10px;
   font-size: 12px;
@@ -157,13 +158,15 @@ li {
 }
 
 .welcome,
+.auth-screen,
 .role-choice,
 .onboarding,
 .home-screen,
 .detail-screen,
 .employer-brief,
 .shortlist-screen,
-.mutual-screen {
+.mutual-screen,
+.admin-screen {
   display: grid;
   gap: 18px;
 }
@@ -299,6 +302,9 @@ li {
 
 .promise-item,
 .choice-card,
+.auth-form,
+.admin-metric,
+.admin-list,
 .assistant-card,
 .match-card,
 .hidden-card,
@@ -314,6 +320,136 @@ li {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: 0 16px 46px rgba(0, 0, 0, 0.18);
+}
+
+.auth-form {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.auth-tabs,
+.role-toggle,
+.admin-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.auth-tabs button,
+.role-toggle button {
+  min-height: 44px;
+  color: var(--secondary);
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-weight: 820;
+}
+
+.auth-tabs button.active,
+.role-toggle button.active {
+  color: #07110e;
+  background: var(--accent);
+  border-color: transparent;
+}
+
+.auth-form label {
+  display: grid;
+  gap: 8px;
+}
+
+.auth-form label span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: lowercase;
+}
+
+.auth-form input {
+  width: 100%;
+  min-height: 52px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  outline: 0;
+  padding: 0 14px;
+  font-weight: 760;
+}
+
+.auth-form input:focus {
+  border-color: rgba(116, 240, 196, 0.45);
+}
+
+.auth-error,
+.admin-status {
+  color: var(--warm);
+  line-height: 1.45;
+}
+
+.admin-actions {
+  align-items: center;
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.admin-metric {
+  display: grid;
+  gap: 8px;
+  padding: 15px;
+}
+
+.admin-metric svg,
+.admin-list h3 svg {
+  color: var(--accent);
+}
+
+.admin-metric strong {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.admin-metric span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.admin-list {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+}
+
+.admin-list h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+}
+
+.admin-list article {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.admin-list span,
+.admin-list p {
+  overflow-wrap: anywhere;
+  color: var(--secondary);
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .promise-item {

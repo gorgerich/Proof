@@ -6,6 +6,7 @@ import {
   useTransform
 } from "framer-motion";
 import {
+  Activity,
   ArrowDown,
   ArrowLeft,
   ArrowRight,
@@ -16,13 +17,20 @@ import {
   Check,
   ChevronDown,
   Clock3,
+  Database,
   FileText,
   HeartHandshake,
   Home,
+  KeyRound,
+  LogOut,
+  Mail,
   MessageCircle,
   Minus,
+  RefreshCw,
   Search,
+  Settings,
   ShieldAlert,
+  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   UserRound,
@@ -195,38 +203,93 @@ function withDetailIcons(blocks = detailBlocks) {
 
 async function postJson(path, payload) {
   try {
-    const response = await fetch(path, {
+    return await requestJson(path, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
+      body: payload
     });
-
-    if (!response.ok) throw new Error(`Request failed: ${response.status}`);
-    return await response.json();
   } catch (error) {
     return null;
   }
 }
 
+async function requestJson(path, options = {}) {
+  const response = await fetch(path, {
+    method: options.method ?? "GET",
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers ?? {})
+    },
+    credentials: "same-origin",
+    body: options.body ? JSON.stringify(options.body) : undefined
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.message ?? data.error ?? `Request failed: ${response.status}`);
+    error.status = response.status;
+    error.data = data;
+    throw error;
+  }
+  return data;
+}
+
+const candidateProfilePayload = {
+  role: "Продуктовый менеджер",
+  desiredRoles: ["Продуктовый менеджер", "Growth Product Manager"],
+  location: "Москва",
+  formats: ["Удалёнка", "Гибрид"],
+  salaryMin: 260,
+  salaryMax: 320,
+  skills: ["подписка", "growth", "аналитика", "retention", "B2C"],
+  tasks: ["Подписка", "B2C продукт", "Удержание", "Growth"],
+  avoid: ["Офис 5/2", "Микроменеджмент"],
+  cases: [
+    "Поднял активацию подписки на 18%",
+    "Собрал процесс growth-экспериментов"
+  ],
+  motivation: ["рост продукта", "понятная зона решений"]
+};
+
+const employerBriefPayload = {
+  role: "Продуктовый менеджер роста",
+  company: "Финтех-сервис",
+  location: "Москва / гибрид",
+  format: "Гибрид",
+  salaryMin: 260,
+  salaryMax: 340,
+  mission: "Поднять удержание платных пользователей",
+  tasks: ["подписка", "retention", "платные функции", "growth"],
+  mustHave: ["подписка", "аналитика", "growth", "B2C"],
+  reject: ["офис 5/2 без гибкости", "нет работы с данными"],
+  risks: ["высокая скорость команды", "офис 2 дня в неделю"],
+  sellingPoint:
+    "Есть зона решений, доступ к данным и задача с понятным бизнес-эффектом."
+};
+
 function App() {
   const [screen, setScreen] = useState("welcome");
   const [mode, setMode] = useState("candidate");
   const [backendData, setBackendData] = useState(fallbackData);
+  const [user, setUser] = useState(null);
 
   useEffect(() => {
     requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0 }));
   }, [screen]);
 
+  const refreshBootstrap = () =>
+    requestJson("/api/bootstrap")
+      .then((data) => {
+        setBackendData((current) => ({
+          ...current,
+          ...data
+        }));
+        return data;
+      })
+      .catch(() => null);
+
   useEffect(() => {
     let cancelled = false;
 
-    fetch("/api/bootstrap")
-      .then((response) => {
-        if (!response.ok) throw new Error(`Bootstrap failed: ${response.status}`);
-        return response.json();
-      })
+    requestJson("/api/bootstrap")
       .then((data) => {
         if (!cancelled) {
           setBackendData((current) => ({
@@ -242,27 +305,48 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    requestJson("/api/auth/me")
+      .then((data) => {
+        if (!cancelled) setUser(data.user);
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const Screen = useMemo(() => {
     const map = {
       welcome: WelcomeScreen,
+      auth: AuthScreen,
       role: RoleChoiceScreen,
       "candidate-onboarding": CandidateOnboarding,
       "candidate-home": CandidateHome,
       "match-detail": MatchDetail,
       "employer-brief": EmployerBrief,
       "employer-shortlist": EmployerShortlist,
-      "mutual-match": MutualMatch
+      "mutual-match": MutualMatch,
+      admin: AdminScreen
     };
     return map[screen] ?? WelcomeScreen;
   }, [screen]);
 
   const showNav = ![
     "welcome",
+    "auth",
     "role",
     "candidate-onboarding",
     "employer-brief"
   ].includes(screen);
-  const navItems = mode === "employer" ? employerNav : candidateNav;
+  const navItems = useMemo(() => {
+    const base = mode === "employer" ? employerNav : candidateNav;
+    if (user?.role !== "admin") return base;
+    return [...base.slice(0, 3), { label: "Админ", icon: Settings, screen: "admin" }];
+  }, [mode, user]);
   const data = useMemo(
     () => ({
       ...backendData,
@@ -277,11 +361,32 @@ function App() {
     postJson("/api/employer-brief", payload);
   const recordDecision = (payload) =>
     postJson("/api/decisions", payload);
+  const login = (payload) =>
+    requestJson("/api/auth/login", { method: "POST", body: payload }).then((result) => {
+      setUser(result.user);
+      return result.user;
+    });
+  const register = (payload) =>
+    requestJson("/api/auth/register", { method: "POST", body: payload }).then((result) => {
+      setUser(result.user);
+      return result.user;
+    });
+  const logout = () =>
+    postJson("/api/auth/logout", {}).then(() => {
+      setUser(null);
+      setScreen("welcome");
+    });
 
   return (
     <main className="app-shell">
       <div className="phone">
-        <AppStatus mode={mode} screen={screen} setScreen={setScreen} />
+        <AppStatus
+          mode={mode}
+          screen={screen}
+          setScreen={setScreen}
+          user={user}
+          logout={logout}
+        />
         <AnimatePresence mode="wait">
           <motion.section
             key={screen}
@@ -294,11 +399,16 @@ function App() {
             <Screen
               mode={mode}
               data={data}
+              user={user}
               setMode={setMode}
               setScreen={setScreen}
               saveCandidateProfile={saveCandidateProfile}
               saveEmployerBrief={saveEmployerBrief}
               recordDecision={recordDecision}
+              login={login}
+              register={register}
+              logout={logout}
+              refreshBootstrap={refreshBootstrap}
             />
           </motion.section>
         </AnimatePresence>
@@ -314,7 +424,7 @@ function App() {
   );
 }
 
-function AppStatus({ mode, screen, setScreen }) {
+function AppStatus({ mode, screen, setScreen, user, logout }) {
   const canGoBack = screen !== "welcome";
 
   return (
@@ -325,6 +435,8 @@ function AppStatus({ mode, screen, setScreen }) {
         onClick={() => {
           if (!canGoBack) return;
           if (screen === "role") setScreen("welcome");
+          else if (screen === "auth") setScreen("welcome");
+          else if (screen === "admin") setScreen(mode === "employer" ? "employer-shortlist" : "candidate-home");
           else if (mode === "employer") setScreen("employer-shortlist");
           else setScreen("candidate-home");
         }}
@@ -332,15 +444,32 @@ function AppStatus({ mode, screen, setScreen }) {
         {canGoBack ? <ArrowLeft size={19} /> : <Sparkles size={18} />}
       </button>
       <div className="status-copy">
-        <span>{mode === "employer" ? "для компаний" : "для специалистов"}</span>
-        <strong>Тихий поиск</strong>
+        <span>
+          {user?.role === "admin"
+            ? "админка"
+            : mode === "employer"
+              ? "для компаний"
+              : "для специалистов"}
+        </span>
+        <strong>{user ? user.displayName || user.email : "Тихий поиск"}</strong>
       </div>
-      <span className="status-pill">без шума</span>
+      {user ? (
+        <button
+          className="status-pill"
+          onClick={() => (user.role === "admin" ? setScreen("admin") : logout())}
+        >
+          {user.role === "admin" ? "админ" : "выйти"}
+        </button>
+      ) : (
+        <button className="status-pill" onClick={() => setScreen("auth")}>
+          войти
+        </button>
+      )}
     </header>
   );
 }
 
-function WelcomeScreen({ setMode, setScreen }) {
+function WelcomeScreen({ user, setMode, setScreen }) {
   return (
     <div className="welcome">
       <section className="hero-block">
@@ -357,7 +486,7 @@ function WelcomeScreen({ setMode, setScreen }) {
           className="main-cta"
           onClick={() => {
             setMode("candidate");
-            setScreen("candidate-onboarding");
+            setScreen(user ? "candidate-onboarding" : "auth");
           }}
         >
           Я ищу работу <ArrowRight size={18} />
@@ -366,7 +495,7 @@ function WelcomeScreen({ setMode, setScreen }) {
           className="quiet-cta"
           onClick={() => {
             setMode("employer");
-            setScreen("employer-brief");
+            setScreen(user ? "employer-brief" : "auth");
           }}
         >
           Я нанимаю <BriefcaseBusiness size={18} />
@@ -385,7 +514,7 @@ function WelcomeScreen({ setMode, setScreen }) {
   );
 }
 
-function RoleChoiceScreen({ setMode, setScreen }) {
+function RoleChoiceScreen({ user, setMode, setScreen }) {
   return (
     <div className="role-choice">
       <ScreenTitle
@@ -400,7 +529,7 @@ function RoleChoiceScreen({ setMode, setScreen }) {
           text="Получать только подходящие предложения и понимать, почему они тебе показаны."
           onClick={() => {
             setMode("candidate");
-            setScreen("candidate-onboarding");
+            setScreen(user ? "candidate-onboarding" : "auth");
           }}
         />
         <ChoiceCard
@@ -409,7 +538,7 @@ function RoleChoiceScreen({ setMode, setScreen }) {
           text="Видеть не поток резюме, а короткий список людей с понятным совпадением."
           onClick={() => {
             setMode("employer");
-            setScreen("employer-brief");
+            setScreen(user ? "employer-brief" : "auth");
           }}
         />
       </div>
@@ -421,7 +550,164 @@ function RoleChoiceScreen({ setMode, setScreen }) {
   );
 }
 
-function CandidateOnboarding({ setScreen, saveCandidateProfile }) {
+function AuthScreen({ mode, setMode, setScreen, login, register, refreshBootstrap }) {
+  const [authMode, setAuthMode] = useState("register");
+  const [accountRole, setAccountRole] = useState(mode);
+  const [email, setEmail] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [password, setPassword] = useState("");
+  const [status, setStatus] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const finish = async (user) => {
+    await refreshBootstrap();
+    setMode(accountRole);
+    if (user?.role === "admin") {
+      setScreen("admin");
+      return;
+    }
+    setScreen(accountRole === "employer" ? "employer-brief" : "candidate-onboarding");
+  };
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setBusy(true);
+    setStatus("");
+
+    try {
+      const payload = {
+        email,
+        password,
+        displayName,
+        role: accountRole
+      };
+      const user =
+        authMode === "login"
+          ? await login({ email, password })
+          : await register(payload);
+      await finish(user);
+    } catch (error) {
+      const message =
+        error.message === "password_too_short"
+          ? "Пароль минимум 8 символов."
+          : error.message === "email_taken"
+            ? "Такой email уже есть. Попробуй войти."
+            : error.message === "invalid_credentials"
+              ? "Email или пароль не совпали."
+              : "Не получилось войти. Проверь данные.";
+      setStatus(message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="auth-screen">
+      <ScreenTitle
+        eyebrow="аккаунт"
+        title={authMode === "login" ? "Войти спокойно" : "Создать профиль"}
+        text="Нужен аккаунт, чтобы сохранять границы, решения и взаимный интерес."
+      />
+
+      <form className="auth-form" onSubmit={submit}>
+        <div className="auth-tabs">
+          <button
+            type="button"
+            className={authMode === "register" ? "active" : ""}
+            onClick={() => setAuthMode("register")}
+          >
+            новый
+          </button>
+          <button
+            type="button"
+            className={authMode === "login" ? "active" : ""}
+            onClick={() => setAuthMode("login")}
+          >
+            вход
+          </button>
+        </div>
+
+        <label>
+          <span>
+            <Mail size={16} />
+            email
+          </span>
+          <input
+            type="email"
+            value={email}
+            autoComplete="email"
+            placeholder="you@example.com"
+            onChange={(event) => setEmail(event.target.value)}
+            required
+          />
+        </label>
+
+        {authMode === "register" && (
+          <label>
+            <span>
+              <UserRound size={16} />
+              имя
+            </span>
+            <input
+              value={displayName}
+              autoComplete="name"
+              placeholder="как тебя звать"
+              onChange={(event) => setDisplayName(event.target.value)}
+            />
+          </label>
+        )}
+
+        <label>
+          <span>
+            <KeyRound size={16} />
+            пароль
+          </span>
+          <input
+            type="password"
+            value={password}
+            autoComplete={authMode === "login" ? "current-password" : "new-password"}
+            placeholder="минимум 8 символов"
+            onChange={(event) => setPassword(event.target.value)}
+            required
+          />
+        </label>
+
+        {authMode === "register" && (
+          <div className="role-toggle">
+            <button
+              type="button"
+              className={accountRole === "candidate" ? "active" : ""}
+              onClick={() => setAccountRole("candidate")}
+            >
+              Ищу работу
+            </button>
+            <button
+              type="button"
+              className={accountRole === "employer" ? "active" : ""}
+              onClick={() => setAccountRole("employer")}
+            >
+              Нанимаю
+            </button>
+          </div>
+        )}
+
+        {status && <p className="auth-error">{status}</p>}
+
+        <button className="main-cta wide" disabled={busy}>
+          {busy ? "проверяем" : authMode === "login" ? "Войти" : "Создать и продолжить"}
+          <ArrowRight size={18} />
+        </button>
+      </form>
+
+      <HumanNote>
+        Если админов ещё нет, первый созданный аккаунт получит админ-доступ.
+        Дальше новые аккаунты становятся кандидатами или работодателями.
+      </HumanNote>
+    </div>
+  );
+}
+
+function CandidateOnboarding({ setScreen, saveCandidateProfile, refreshBootstrap }) {
   const [step, setStep] = useState(0);
   const [sheetOpen, setSheetOpen] = useState(true);
   const current = onboardingSteps[step];
@@ -497,10 +783,11 @@ function CandidateOnboarding({ setScreen, saveCandidateProfile }) {
           onClick={() => {
             if (step === onboardingSteps.length - 1) {
               void saveCandidateProfile({
+                ...candidateProfilePayload,
                 completed: true,
                 stepCount: onboardingSteps.length,
                 source: "mobile-onboarding"
-              });
+              }).then(refreshBootstrap);
               setScreen("candidate-home");
             } else {
               setStep((value) => value + 1);
@@ -693,7 +980,7 @@ function MatchDetail({ setScreen, data, recordDecision }) {
   );
 }
 
-function EmployerBrief({ setScreen, saveEmployerBrief }) {
+function EmployerBrief({ setScreen, saveEmployerBrief, refreshBootstrap }) {
   return (
     <div className="employer-brief">
       <ScreenTitle
@@ -733,11 +1020,9 @@ function EmployerBrief({ setScreen, saveEmployerBrief }) {
         className="main-cta wide"
         onClick={() => {
           void saveEmployerBrief({
-            role: "Продуктовый менеджер роста",
-            mission: "Поднять удержание платных пользователей",
-            salary: "260-340 тыс. ₽",
-            format: "гибрид, Москва"
-          });
+            ...employerBriefPayload,
+            source: "mobile-brief"
+          }).then(refreshBootstrap);
           setScreen("employer-shortlist");
         }}
       >
@@ -868,6 +1153,146 @@ function MutualMatch({ mode }) {
           : "Компания увидит твои кейсы и границы. Не нужно заново объяснять базовые условия."}
       </HumanNote>
     </div>
+  );
+}
+
+function AdminScreen({ user, logout, refreshBootstrap }) {
+  const [overview, setOverview] = useState(null);
+  const [status, setStatus] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const loadOverview = () =>
+    requestJson("/api/admin/overview")
+      .then((data) => {
+        setOverview(data);
+        setStatus("");
+        return data;
+      })
+      .catch((error) => {
+        setStatus(error.status === 403 ? "Нет админ-доступа." : "Админка пока недоступна.");
+        return null;
+      });
+
+  useEffect(() => {
+    void loadOverview();
+  }, []);
+
+  const recompute = async () => {
+    setBusy(true);
+    setStatus("");
+    try {
+      const result = await requestJson("/api/admin/recompute", {
+        method: "POST",
+        body: {}
+      });
+      await refreshBootstrap();
+      await loadOverview();
+      setStatus(`Пересчитали ${result.computed} совпадений.`);
+    } catch (error) {
+      setStatus("Не получилось пересчитать матчи.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!user) {
+    return (
+      <div className="admin-screen">
+        <ScreenTitle
+          eyebrow="админка"
+          title="Сначала войди"
+          text="Админ-панель открывается только после входа."
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="admin-screen">
+      <ScreenTitle
+        eyebrow="операторская"
+        title="Что происходит внутри"
+        text="Пользователи, профили, брифы, решения и пересчёт совпадений."
+      />
+
+      <div className="admin-actions">
+        <button className="main-cta" onClick={recompute} disabled={busy}>
+          <RefreshCw size={17} />
+          {busy ? "считаем" : "Пересчитать"}
+        </button>
+        <button className="secondary-cta" onClick={logout}>
+          <LogOut size={17} />
+          Выйти
+        </button>
+      </div>
+
+      {status && <p className="admin-status">{status}</p>}
+
+      <div className="admin-grid">
+        <AdminMetric icon={UserRound} label="аккаунты" value={overview?.counts?.users ?? 0} />
+        <AdminMetric icon={FileText} label="профили" value={overview?.counts?.profiles ?? 0} />
+        <AdminMetric icon={BriefcaseBusiness} label="брифы" value={overview?.counts?.briefs ?? 0} />
+        <AdminMetric icon={HeartHandshake} label="матчи" value={overview?.counts?.matches ?? 0} />
+      </div>
+
+      <AdminList
+        icon={ShieldCheck}
+        title="Топ совпадений"
+        items={(overview?.matches ?? []).map((item) => ({
+          title: `${item.score}% · ${item.category}`,
+          text: `${item.candidate_profile_id} → ${item.hiring_brief_id}`
+        }))}
+      />
+
+      <AdminList
+        icon={Database}
+        title="Последние аккаунты"
+        items={(overview?.users ?? []).map((item) => ({
+          title: item.email,
+          text: item.role
+        }))}
+      />
+
+      <AdminList
+        icon={Activity}
+        title="Решения"
+        items={(overview?.decisions ?? []).map((item) => ({
+          title: `${item.actor} · ${item.action}`,
+          text: item.target_id
+        }))}
+      />
+    </div>
+  );
+}
+
+function AdminMetric({ icon: Icon, label, value }) {
+  return (
+    <article className="admin-metric">
+      <Icon size={18} />
+      <strong>{value}</strong>
+      <span>{label}</span>
+    </article>
+  );
+}
+
+function AdminList({ icon: Icon, title, items }) {
+  return (
+    <section className="admin-list">
+      <h3>
+        <Icon size={18} />
+        {title}
+      </h3>
+      {items.length ? (
+        items.map((item) => (
+          <article key={`${item.title}-${item.text}`}>
+            <strong>{item.title}</strong>
+            <span>{item.text}</span>
+          </article>
+        ))
+      ) : (
+        <p>Пока пусто.</p>
+      )}
+    </section>
   );
 }
 
