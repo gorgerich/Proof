@@ -411,6 +411,7 @@ function App() {
   const [screen, setScreen] = useState(initialScreen);
   const [mode, setMode] = useState(initialMode);
   const [backendData, setBackendData] = useState(fallbackData);
+  const [selectedMatch, setSelectedMatch] = useState(null);
   const [user, setUser] = useState(null);
 
   useEffect(() => {
@@ -491,11 +492,25 @@ function App() {
     return [...base.slice(0, 3), { label: "Админ", icon: Settings, screen: "admin" }];
   }, [mode, user]);
   const data = useMemo(
-    () => ({
-      ...backendData,
-      detailBlocks: withDetailIcons(backendData.detailBlocks)
-    }),
-    [backendData]
+    () => {
+      const selected = selectedMatch
+        ? {
+            candidateMatch: selectedMatch.candidateMatch ?? selectedMatch,
+            employerCandidate: selectedMatch.employerCandidate ?? backendData.employerCandidate,
+            detailBlocks: selectedMatch.detailBlocks ?? backendData.detailBlocks,
+            matchDossier: selectedMatch.matchDossier ?? backendData.matchDossier,
+            evidenceVault: selectedMatch.evidenceVault ?? backendData.evidenceVault,
+            mutualPipeline: selectedMatch.mutualPipeline ?? backendData.mutualPipeline
+          }
+        : {};
+
+      return {
+        ...backendData,
+        ...selected,
+        detailBlocks: withDetailIcons(selected.detailBlocks ?? backendData.detailBlocks)
+      };
+    },
+    [backendData, selectedMatch]
   );
 
   const saveCandidateProfile = (payload) =>
@@ -545,6 +560,7 @@ function App() {
               user={user}
               setMode={setMode}
               setScreen={setScreen}
+              setSelectedMatch={setSelectedMatch}
               saveCandidateProfile={saveCandidateProfile}
               saveEmployerBrief={saveEmployerBrief}
               recordDecision={recordDecision}
@@ -946,9 +962,58 @@ function CandidateOnboarding({ setScreen, saveCandidateProfile, refreshBootstrap
   );
 }
 
-function CandidateHome({ setScreen, data, recordDecision }) {
-  const match = data.candidateMatch;
+function visibleQueue(items = [], fallback) {
+  const list = items.filter((item) => item && item.state !== "passed");
+  return list.length ? list : [fallback].filter(Boolean);
+}
+
+function nextQueue(current) {
+  return current.length > 1 ? current.slice(1) : current;
+}
+
+function CandidateHome({ setScreen, data, recordDecision, setSelectedMatch }) {
+  const fallbackMatch = data.candidateMatch;
+  const [queue, setQueue] = useState(() => [fallbackMatch]);
+  const [queueMeta, setQueueMeta] = useState(null);
+  const [queueStatus, setQueueStatus] = useState("тихо проверяем рынок");
+  const match = queue[0] ?? fallbackMatch;
   const radar = data.marketRadar ?? marketRadar;
+
+  useEffect(() => {
+    let cancelled = false;
+    requestJson("/api/matches?mode=candidate")
+      .then((result) => {
+        if (cancelled) return;
+        setQueue(visibleQueue(result.matches, fallbackMatch));
+        setQueueMeta(result.counts ?? null);
+        setQueueStatus(result.backend?.database ? "живая очередь из базы" : "пример очереди");
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setQueue([fallbackMatch]);
+          setQueueStatus("показываем сохранённый пример");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fallbackMatch.id]);
+
+  const pass = () => {
+    void recordDecision({
+      actor: "candidate",
+      targetId: match.id,
+      action: "pass",
+      data: { screen: "candidate-home" }
+    });
+    setQueue((current) => nextQueue(current));
+  };
+
+  const openDetail = () => {
+    setSelectedMatch(match);
+    setScreen("match-detail");
+  };
 
   return (
     <div className="home-screen">
@@ -960,15 +1025,18 @@ function CandidateHome({ setScreen, data, recordDecision }) {
 
       <CandidateJobCard
         match={match}
-        onPass={() =>
-          recordDecision({
-            actor: "candidate",
-            targetId: match.id,
-            action: "pass",
-            data: { screen: "candidate-home" }
-          })
-        }
-        onInterest={() => setScreen("match-detail")}
+        onPass={pass}
+        onInterest={openDetail}
+      />
+
+      <QueueStatus
+        status={queueStatus}
+        counts={queueMeta}
+        items={queue.slice(1, 4)}
+        onPick={(item) => {
+          setSelectedMatch(item);
+          setQueue((current) => [item, ...current.filter((next) => next.id !== item.id)]);
+        }}
       />
 
       <SwipeHint />
@@ -1036,6 +1104,37 @@ function CandidateJobCard({ match, onPass, onInterest }) {
         </button>
       </div>
     </motion.article>
+  );
+}
+
+function QueueStatus({ status, counts, items, onPick }) {
+  return (
+    <section className="queue-status">
+      <div className="queue-head">
+        <span>
+          <Activity size={15} />
+          очередь
+        </span>
+        <strong>{status}</strong>
+      </div>
+      <div className="queue-counts">
+        <span>{counts?.visible ?? 1} в работе</span>
+        <span>{counts?.waiting ?? 0} ждут ответ</span>
+        <span>{counts?.mutual ?? 0} взаимно</span>
+      </div>
+      {items.length ? (
+        <div className="queue-rail">
+          {items.map((item) => (
+            <button className="queue-chip" key={item.id} onClick={() => onPick(item)}>
+              <strong>{item.role}</strong>
+              <span>{item.stateLabel ?? item.fit}</span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="queue-empty">Пока не расширяем список. Лучше меньше, но с понятной причиной.</p>
+      )}
+    </section>
   );
 }
 
@@ -1194,9 +1293,55 @@ function EmployerBrief({ setScreen, saveEmployerBrief, refreshBootstrap }) {
   );
 }
 
-function EmployerShortlist({ setScreen, data, recordDecision }) {
-  const candidate = data.employerCandidate;
+function EmployerShortlist({ setScreen, data, recordDecision, setSelectedMatch }) {
+  const fallbackCandidate = data.employerCandidate;
+  const [queue, setQueue] = useState(() => [fallbackCandidate]);
+  const [queueMeta, setQueueMeta] = useState(null);
+  const [queueStatus, setQueueStatus] = useState("собираем короткий список");
+  const candidate = queue[0] ?? fallbackCandidate;
   const vault = data.evidenceVault ?? evidenceVault;
+
+  useEffect(() => {
+    let cancelled = false;
+    requestJson("/api/matches?mode=employer")
+      .then((result) => {
+        if (cancelled) return;
+        setQueue(visibleQueue(result.matches, fallbackCandidate));
+        setQueueMeta(result.counts ?? null);
+        setQueueStatus(result.backend?.database ? "живой shortlist из базы" : "пример shortlist");
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setQueue([fallbackCandidate]);
+          setQueueStatus("показываем сохранённый пример");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fallbackCandidate.id]);
+
+  const pass = () => {
+    void recordDecision({
+      actor: "employer",
+      targetId: candidate.id,
+      action: "pass",
+      data: { screen: "employer-shortlist" }
+    });
+    setQueue((current) => nextQueue(current));
+  };
+
+  const wantToTalk = () => {
+    setSelectedMatch(candidate);
+    void recordDecision({
+      actor: "employer",
+      targetId: candidate.id,
+      action: "want_to_talk",
+      data: { screen: "employer-shortlist" }
+    });
+    setScreen("mutual-match");
+  };
 
   return (
     <div className="shortlist-screen">
@@ -1207,6 +1352,16 @@ function EmployerShortlist({ setScreen, data, recordDecision }) {
       />
 
       <ShortlistContext />
+
+      <QueueStatus
+        status={queueStatus}
+        counts={queueMeta}
+        items={queue.slice(1, 4)}
+        onPick={(item) => {
+          setSelectedMatch(item);
+          setQueue((current) => [item, ...current.filter((next) => next.id !== item.id)]);
+        }}
+      />
 
       <article className="match-card employer">
         <div className="card-top">
@@ -1226,29 +1381,14 @@ function EmployerShortlist({ setScreen, data, recordDecision }) {
         <div className="card-actions">
           <button
             className="secondary-cta"
-            onClick={() =>
-              recordDecision({
-                actor: "employer",
-                targetId: candidate.id,
-                action: "pass",
-                data: { screen: "employer-shortlist" }
-              })
-            }
+            onClick={pass}
           >
             <Minus size={17} />
             Пропустить
           </button>
           <button
             className="main-cta"
-            onClick={() => {
-              void recordDecision({
-                actor: "employer",
-                targetId: candidate.id,
-                action: "want_to_talk",
-                data: { screen: "employer-shortlist" }
-              });
-              setScreen("mutual-match");
-            }}
+            onClick={wantToTalk}
           >
             Хочу поговорить
             <MessageCircle size={17} />
@@ -1627,7 +1767,16 @@ function AdminScreen({ user, logout, refreshBootstrap }) {
         title="Топ совпадений"
         items={(overview?.matches ?? []).map((item) => ({
           title: `${item.score}% · ${item.category}`,
-          text: `${item.candidate_profile_id} → ${item.hiring_brief_id}`
+          text: `${item.candidate_role ?? "кандидат"} → ${item.brief_role ?? "роль"} · ${item.company ?? "компания"}`
+        }))}
+      />
+
+      <AdminList
+        icon={Activity}
+        title="Сводка решений"
+        items={(overview?.decisionStats ?? []).map((item) => ({
+          title: item.action,
+          text: `${item.count} событий`
         }))}
       />
 

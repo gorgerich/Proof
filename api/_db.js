@@ -3,6 +3,8 @@ import { neon } from "@neondatabase/serverless";
 import { seed, sampleCandidateProfile, sampleHiringBrief } from "./_seed.js";
 import {
   buildAppDataFromMatch,
+  buildCandidateMatch,
+  buildEmployerCandidate,
   normalizeCandidateProfile,
   normalizeHiringBrief,
   pluralRu,
@@ -476,25 +478,163 @@ export async function saveDecision({ actor, targetId, action, data = {} }, userI
   };
 }
 
-export async function getMatches(mode = "candidate") {
+function seedMatchItem(mode = "candidate") {
+  const base = mode === "employer" ? seed.employerCandidate : seed.candidateMatch;
+  return {
+    ...base,
+    id: base.id,
+    state: "new",
+    stateLabel: "новое",
+    viewerAction: null,
+    mutual: false,
+    candidateMatch: seed.candidateMatch,
+    employerCandidate: seed.employerCandidate,
+    detailBlocks: seed.detailBlocks,
+    matchDossier: seed.matchDossier,
+    evidenceVault: seed.evidenceVault,
+    mutualPipeline: seed.mutualPipeline
+  };
+}
+
+function latestDecisionMap(rows = []) {
+  const map = new Map();
+  for (const row of rows) {
+    const key = `${row.target_id}:${row.actor}`;
+    if (!map.has(key)) map.set(key, row);
+  }
+  return map;
+}
+
+function stateForDecision({ viewerAction, candidateAction, employerAction }) {
+  if (viewerAction === "pass") {
+    return { state: "passed", stateLabel: "скрыто" };
+  }
+  if (candidateAction === "interested" && employerAction === "want_to_talk") {
+    return { state: "mutual", stateLabel: "взаимно" };
+  }
+  if (viewerAction === "interested" || viewerAction === "want_to_talk") {
+    return { state: "waiting", stateLabel: "ждём вторую сторону" };
+  }
+  return { state: "new", stateLabel: "новое" };
+}
+
+function countStates(items = []) {
+  return items.reduce(
+    (acc, item) => {
+      acc.total += 1;
+      acc[item.state] = (acc[item.state] ?? 0) + 1;
+      if (item.state !== "passed") acc.visible += 1;
+      return acc;
+    },
+    { total: 0, visible: 0, new: 0, waiting: 0, mutual: 0, passed: 0 }
+  );
+}
+
+export async function getMatches(mode = "candidate", userId = null) {
+  const safeMode = mode === "employer" ? "employer" : "candidate";
   if (!sql) {
+    const item = seedMatchItem(safeMode);
     return {
-      matches: [seed.candidateMatch],
+      matches: [item],
+      counts: countStates([item]),
+      mode: safeMode,
       backend: backendMeta()
     };
   }
 
   await recomputeAllMatches();
   const rows = await sql`
-    select *
+    select
+      proof_matches.*,
+      proof_profiles.data as candidate_data,
+      proof_hiring_briefs.data as brief_data
     from proof_matches
+    join proof_profiles on proof_profiles.id = proof_matches.candidate_profile_id
+    join proof_hiring_briefs on proof_hiring_briefs.id = proof_matches.hiring_brief_id
     order by score desc, updated_at desc
     limit 20
   `;
+  const targetIds = rows.map((row) => row.id);
+  const decisionRows = targetIds.length
+    ? await sql`
+        select distinct on (target_id, actor)
+          target_id,
+          actor,
+          action,
+          user_id,
+          created_at
+        from proof_decisions
+        where target_id = any(${targetIds})
+        order by target_id, actor, created_at desc
+      `
+    : [];
+  const viewerRows =
+    userId && targetIds.length
+      ? await sql`
+          select distinct on (target_id, actor)
+            target_id,
+            actor,
+            action,
+            user_id,
+            created_at
+          from proof_decisions
+          where target_id = any(${targetIds})
+            and user_id = ${userId}
+          order by target_id, actor, created_at desc
+        `
+      : [];
+  const globalDecisions = latestDecisionMap(decisionRows);
+  const viewerDecisions = latestDecisionMap(viewerRows);
+  const actor = safeMode === "employer" ? "employer" : "candidate";
+
+  const matches = rows.map((row) => {
+    const candidate = normalizeCandidateProfile(row.candidate_data);
+    const brief = normalizeHiringBrief(row.brief_data);
+    const match = {
+      id: row.id,
+      score: row.score,
+      reasons: row.reasons ?? [],
+      proof: row.proof_points ?? [],
+      risks: row.risks ?? []
+    };
+    const appData = buildAppDataFromMatch(
+      row,
+      { id: row.candidate_profile_id, data: candidate },
+      { id: row.hiring_brief_id, data: brief },
+      { found: rows.length, hidden: Math.max(12, rows.length * 7) }
+    );
+    const candidateAction = globalDecisions.get(`${row.id}:candidate`)?.action ?? null;
+    const employerAction = globalDecisions.get(`${row.id}:employer`)?.action ?? null;
+    const viewerAction = userId ? viewerDecisions.get(`${row.id}:${actor}`)?.action ?? null : null;
+    const state = stateForDecision({ viewerAction, candidateAction, employerAction });
+    const card =
+      safeMode === "employer"
+        ? buildEmployerCandidate(match, candidate)
+        : buildCandidateMatch(match, candidate, brief);
+
+    return {
+      ...card,
+      ...state,
+      viewerAction,
+      candidateAction,
+      employerAction,
+      mutual: state.state === "mutual",
+      updatedAt: row.updated_at,
+      candidateProfileId: row.candidate_profile_id,
+      hiringBriefId: row.hiring_brief_id,
+      candidateMatch: appData.candidateMatch,
+      employerCandidate: appData.employerCandidate,
+      detailBlocks: appData.detailBlocks,
+      matchDossier: appData.matchDossier,
+      evidenceVault: appData.evidenceVault,
+      mutualPipeline: appData.mutualPipeline
+    };
+  });
 
   return {
-    matches: rows,
-    mode,
+    matches,
+    counts: countStates(matches),
+    mode: safeMode,
     backend: backendMeta()
   };
 }
@@ -505,7 +645,17 @@ export async function getAdminOverview() {
   }
 
   await ensureSeedRecords();
-  const [users, profiles, briefs, matches, decisions, recentUsers, recentMatches, recentDecisions] =
+  const [
+    users,
+    profiles,
+    briefs,
+    matches,
+    decisions,
+    recentUsers,
+    recentMatches,
+    recentDecisions,
+    decisionStats
+  ] =
     await Promise.all([
       sql`select count(*)::int as count from proof_users`,
       sql`select count(*)::int as count from proof_profiles`,
@@ -519,9 +669,20 @@ export async function getAdminOverview() {
         limit 8
       `,
       sql`
-        select id, score, category, candidate_profile_id, hiring_brief_id, updated_at
+        select
+          proof_matches.id,
+          proof_matches.score,
+          proof_matches.category,
+          proof_matches.candidate_profile_id,
+          proof_matches.hiring_brief_id,
+          proof_matches.updated_at,
+          proof_profiles.data->>'role' as candidate_role,
+          proof_hiring_briefs.data->>'role' as brief_role,
+          proof_hiring_briefs.data->>'company' as company
         from proof_matches
-        order by score desc, updated_at desc
+        join proof_profiles on proof_profiles.id = proof_matches.candidate_profile_id
+        join proof_hiring_briefs on proof_hiring_briefs.id = proof_matches.hiring_brief_id
+        order by proof_matches.score desc, proof_matches.updated_at desc
         limit 8
       `,
       sql`
@@ -529,6 +690,12 @@ export async function getAdminOverview() {
         from proof_decisions
         order by created_at desc
         limit 8
+      `,
+      sql`
+        select action, count(*)::int as count
+        from proof_decisions
+        group by action
+        order by count desc
       `
     ]);
 
@@ -543,6 +710,7 @@ export async function getAdminOverview() {
     },
     users: recentUsers,
     matches: recentMatches,
-    decisions: recentDecisions
+    decisions: recentDecisions,
+    decisionStats
   };
 }

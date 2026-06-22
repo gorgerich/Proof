@@ -1,4 +1,5 @@
 import { getMatches } from "./_db.js";
+import { readSession } from "./_auth.js";
 import { sendJson } from "./_utils.js";
 
 export default async function handler(req, res) {
@@ -8,7 +9,8 @@ export default async function handler(req, res) {
 
   try {
     const mode = req.query?.mode ?? "candidate";
-    const data = await getMatches(mode);
+    const user = await readSession(req);
+    const data = await getMatches(mode, user?.id ?? null);
     return sendJson(res, 200, data);
   } catch (error) {
     return sendJson(res, error.statusCode ?? 500, {
