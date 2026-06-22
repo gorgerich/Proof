@@ -1426,7 +1426,7 @@ function MutualMatch({ mode, data }) {
 
   useEffect(() => {
     let cancelled = false;
-    requestJson(`/api/match-thread?matchId=${encodeURIComponent(matchId)}`)
+    requestJson(`/api/matches?threadMatchId=${encodeURIComponent(matchId)}`)
       .then((result) => {
         if (cancelled) return;
         setThread(result.thread ?? fallbackThread);
@@ -1458,7 +1458,7 @@ function MutualMatch({ mode, data }) {
     };
     setThread(optimistic);
     setThreadStatus("сохраняем");
-    postJson("/api/match-thread", { matchId, ...payload }).then((result) => {
+    postJson("/api/matches", { type: "thread", matchId, ...payload }).then((result) => {
       if (result?.thread) {
         setThread(result.thread);
         setThreadStatus(result.stored ? "сохранено" : "локально");
