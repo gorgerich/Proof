@@ -264,6 +264,20 @@ const mutualPipeline = [
   { label: "интервью", state: "locked", text: "только если после первого шага всё ок" }
 ];
 
+const fallbackThread = {
+  status: "draft",
+  format: "15 минут знакомства",
+  question: "Как устроены эксперименты и кто принимает решения по росту продукта?",
+  selectedSlot: "завтра, 11:30",
+  note: "Можно начать с одного вопроса, без длинного интервью.",
+  timeline: [
+    {
+      title: "взаимный интерес",
+      text: "обе стороны хотят поговорить"
+    }
+  ]
+};
+
 const employerFields = [
   "роль",
   "задача на первые 3 месяца",
@@ -1406,6 +1420,53 @@ function EmployerShortlist({ setScreen, data, recordDecision, setSelectedMatch }
 
 function MutualMatch({ mode, data }) {
   const pipeline = data.mutualPipeline ?? mutualPipeline;
+  const matchId = data.candidateMatch?.id ?? data.employerCandidate?.id ?? "local-match";
+  const [thread, setThread] = useState(fallbackThread);
+  const [threadStatus, setThreadStatus] = useState("готовим спокойный старт");
+
+  useEffect(() => {
+    let cancelled = false;
+    requestJson(`/api/match-thread?matchId=${encodeURIComponent(matchId)}`)
+      .then((result) => {
+        if (cancelled) return;
+        setThread(result.thread ?? fallbackThread);
+        setThreadStatus(result.stored ? "синхронизировано" : "можно выбрать формат");
+      })
+      .catch(() => {
+        if (!cancelled) setThreadStatus("можно выбрать формат");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [matchId]);
+
+  const saveThread = (payload) => {
+    const optimistic = {
+      ...thread,
+      ...payload,
+      timeline: [
+        ...(thread.timeline ?? []),
+        {
+          title: payload.status === "question" ? "вопрос готов" : "формат выбран",
+          text:
+            payload.status === "question"
+              ? payload.question
+              : `${payload.format ?? thread.format} · ${payload.selectedSlot ?? thread.selectedSlot}`
+        }
+      ]
+    };
+    setThread(optimistic);
+    setThreadStatus("сохраняем");
+    postJson("/api/match-thread", { matchId, ...payload }).then((result) => {
+      if (result?.thread) {
+        setThread(result.thread);
+        setThreadStatus(result.stored ? "сохранено" : "локально");
+      } else {
+        setThreadStatus("локально до входа");
+      }
+    });
+  };
 
   return (
     <div className="mutual-screen">
@@ -1436,22 +1497,54 @@ function MutualMatch({ mode, data }) {
 
         <PipelineSteps items={pipeline} />
 
+        <ThreadComposer
+          thread={thread}
+          status={threadStatus}
+          onChange={saveThread}
+        />
+
         <div className="meeting-options">
-          <button>
+          {["15 минут знакомства", "Полное интервью", "Сначала задать вопрос"].map((option) => (
+            <button
+              className={thread.format === option ? "active" : ""}
+              key={option}
+              onClick={() =>
+                saveThread({
+                  format: option,
+                  status: option === "Сначала задать вопрос" ? "question" : "planned"
+                })
+              }
+            >
+              {option === "15 минут знакомства" && (
             <Clock3 size={18} />
-            15 минут знакомства
-          </button>
-          <button>
+              )}
+              {option === "Полное интервью" && (
             <CalendarClock size={18} />
-            Полное интервью
-          </button>
-          <button>
+              )}
+              {option === "Сначала задать вопрос" && (
             <MessageCircle size={18} />
-            Сначала задать вопрос
-          </button>
+              )}
+              {option}
+            </button>
+          ))}
         </div>
 
-        <button className="main-cta wide">
+        <div className="time-slots">
+          {["завтра, 11:30", "ср, 16:00", "пт, 12:15"].map((slot) => (
+            <button
+              className={thread.selectedSlot === slot ? "active" : ""}
+              key={slot}
+              onClick={() => saveThread({ selectedSlot: slot, status: "planned" })}
+            >
+              {slot}
+            </button>
+          ))}
+        </div>
+
+        <button
+          className="main-cta wide"
+          onClick={() => saveThread({ status: "planned" })}
+        >
           Выбрать время
           <ArrowRight size={18} />
         </button>
@@ -1462,6 +1555,62 @@ function MutualMatch({ mode, data }) {
           ? "Кандидат увидит задачу, вилку и честные риски. Так разговор начинается спокойнее."
           : "Компания увидит твои кейсы и границы. Не нужно заново объяснять базовые условия."}
       </HumanNote>
+    </div>
+  );
+}
+
+function ThreadComposer({ thread, status, onChange }) {
+  const [question, setQuestion] = useState(thread.question ?? fallbackThread.question);
+
+  useEffect(() => {
+    setQuestion(thread.question ?? fallbackThread.question);
+  }, [thread.question]);
+
+  return (
+    <section className="thread-composer">
+      <div className="thread-head">
+        <span>
+          <MessageCircle size={16} />
+          следующий шаг
+        </span>
+        <strong>{status}</strong>
+      </div>
+
+      <label className="question-box">
+        <span>вопрос перед звонком</span>
+        <textarea
+          value={question}
+          rows={3}
+          onChange={(event) => setQuestion(event.target.value)}
+          onBlur={() =>
+            onChange({
+              question,
+              status: "question",
+              format: "Сначала задать вопрос"
+            })
+          }
+        />
+      </label>
+
+      <div className="thread-summary">
+        <span>{thread.format}</span>
+        <span>{thread.selectedSlot}</span>
+      </div>
+
+      <ThreadTimeline items={thread.timeline ?? []} />
+    </section>
+  );
+}
+
+function ThreadTimeline({ items }) {
+  return (
+    <div className="thread-timeline">
+      {items.slice(-3).map((item, index) => (
+        <article key={`${item.title}-${item.at ?? index}`}>
+          <span>{item.title}</span>
+          <p>{item.text}</p>
+        </article>
+      ))}
     </div>
   );
 }
@@ -1760,6 +1909,7 @@ function AdminScreen({ user, logout, refreshBootstrap }) {
         <AdminMetric icon={FileText} label="профили" value={overview?.counts?.profiles ?? 0} />
         <AdminMetric icon={BriefcaseBusiness} label="брифы" value={overview?.counts?.briefs ?? 0} />
         <AdminMetric icon={HeartHandshake} label="матчи" value={overview?.counts?.matches ?? 0} />
+        <AdminMetric icon={MessageCircle} label="диалоги" value={overview?.counts?.threads ?? 0} />
       </div>
 
       <AdminList
@@ -1777,6 +1927,15 @@ function AdminScreen({ user, logout, refreshBootstrap }) {
         items={(overview?.decisionStats ?? []).map((item) => ({
           title: item.action,
           text: `${item.count} событий`
+        }))}
+      />
+
+      <AdminList
+        icon={MessageCircle}
+        title="Диалоги"
+        items={(overview?.threads ?? []).map((item) => ({
+          title: `${item.status} · ${item.format}`,
+          text: `${item.selectedSlot} · ${item.question}`
         }))}
       />
 

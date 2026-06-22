@@ -45,6 +45,16 @@ create table if not exists proof_decisions (
   created_at timestamptz not null default now()
 );
 
+create table if not exists proof_match_threads (
+  id text primary key,
+  match_id text not null unique,
+  created_by_user_id text,
+  status text not null default 'started',
+  data jsonb not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists proof_matches (
   id text primary key,
   candidate_profile_id text not null,

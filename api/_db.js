@@ -104,6 +104,18 @@ async function ensureSchema() {
   await sql`alter table proof_decisions add column if not exists user_id text`;
 
   await sql`
+    create table if not exists proof_match_threads (
+      id text primary key,
+      match_id text not null unique,
+      created_by_user_id text,
+      status text not null default 'started',
+      data jsonb not null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    )
+  `;
+
+  await sql`
     create table if not exists proof_matches (
       id text primary key,
       candidate_profile_id text not null,
@@ -478,6 +490,142 @@ export async function saveDecision({ actor, targetId, action, data = {} }, userI
   };
 }
 
+function defaultThreadData(matchId) {
+  return {
+    matchId,
+    format: "15 минут знакомства",
+    question:
+      "Как устроены эксперименты и кто принимает решения по росту продукта?",
+    selectedSlot: "завтра, 11:30",
+    note: "Можно начать с одного вопроса, без длинного интервью.",
+    timeline: [
+      {
+        title: "взаимный интерес",
+        text: "обе стороны хотят поговорить",
+        at: new Date().toISOString()
+      }
+    ]
+  };
+}
+
+function publicThread(row, fallbackMatchId) {
+  const data = row?.data ?? defaultThreadData(fallbackMatchId);
+  return {
+    id: row?.id ?? `local-thread-${fallbackMatchId}`,
+    matchId: row?.match_id ?? fallbackMatchId,
+    status: row?.status ?? "draft",
+    format: data.format,
+    question: data.question,
+    selectedSlot: data.selectedSlot,
+    note: data.note,
+    timeline: data.timeline ?? [],
+    updatedAt: row?.updated_at ?? null
+  };
+}
+
+export async function getMatchThread(matchId, userId = null) {
+  if (!matchId) {
+    const error = new Error("match_id_required");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!sql) {
+    return { thread: publicThread(null, matchId), stored: false, backend: backendMeta() };
+  }
+
+  await ensureSchema();
+  const rows = await sql`
+    select *
+    from proof_match_threads
+    where match_id = ${matchId}
+    limit 1
+  `;
+  if (rows.length) {
+    return { thread: publicThread(rows[0], matchId), stored: true, backend: backendMeta() };
+  }
+  if (!userId) {
+    return { thread: publicThread(null, matchId), stored: false, backend: backendMeta() };
+  }
+
+  const id = randomUUID();
+  const data = defaultThreadData(matchId);
+  const inserted = await sql`
+    insert into proof_match_threads (id, match_id, created_by_user_id, status, data)
+    values (${id}, ${matchId}, ${userId}, 'started', ${JSON.stringify(data)}::jsonb)
+    on conflict (match_id) do update set updated_at = now()
+    returning *
+  `;
+
+  return { thread: publicThread(inserted[0], matchId), stored: true, backend: backendMeta() };
+}
+
+export async function saveMatchThread(
+  { matchId, format, question, selectedSlot, status = "planned", note },
+  userId = null
+) {
+  if (!matchId) {
+    const error = new Error("match_id_required");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!sql) {
+    const data = defaultThreadData(matchId);
+    return {
+      thread: publicThread(
+        {
+          data: {
+            ...data,
+            format: format ?? data.format,
+            question: question ?? data.question,
+            selectedSlot: selectedSlot ?? data.selectedSlot,
+            note: note ?? data.note
+          },
+          status,
+          match_id: matchId
+        },
+        matchId
+      ),
+      stored: false,
+      backend: backendMeta()
+    };
+  }
+
+  await ensureSchema();
+  const current = await getMatchThread(matchId, userId);
+  const nextData = {
+    ...defaultThreadData(matchId),
+    ...current.thread,
+    format: format ?? current.thread.format,
+    question: question ?? current.thread.question,
+    selectedSlot: selectedSlot ?? current.thread.selectedSlot,
+    note: note ?? current.thread.note,
+    timeline: [
+      ...(current.thread.timeline ?? []),
+      {
+        title: status === "question" ? "вопрос отправлен" : "формат выбран",
+        text:
+          status === "question"
+            ? question ?? current.thread.question
+            : `${format ?? current.thread.format} · ${selectedSlot ?? current.thread.selectedSlot}`,
+        at: new Date().toISOString()
+      }
+    ]
+  };
+  const rows = await sql`
+    update proof_match_threads
+    set
+      status = ${status},
+      data = ${JSON.stringify(nextData)}::jsonb,
+      updated_at = now()
+    where match_id = ${matchId}
+    returning *
+  `;
+
+  return { thread: publicThread(rows[0], matchId), stored: true, backend: backendMeta() };
+}
+
 function seedMatchItem(mode = "candidate") {
   const base = mode === "employer" ? seed.employerCandidate : seed.candidateMatch;
   return {
@@ -654,7 +802,9 @@ export async function getAdminOverview() {
     recentUsers,
     recentMatches,
     recentDecisions,
-    decisionStats
+    recentThreads,
+    decisionStats,
+    threads
   ] =
     await Promise.all([
       sql`select count(*)::int as count from proof_users`,
@@ -692,11 +842,18 @@ export async function getAdminOverview() {
         limit 8
       `,
       sql`
+        select id, match_id, status, data, updated_at
+        from proof_match_threads
+        order by updated_at desc
+        limit 8
+      `,
+      sql`
         select action, count(*)::int as count
         from proof_decisions
         group by action
         order by count desc
-      `
+      `,
+      sql`select count(*)::int as count from proof_match_threads`
     ]);
 
   return {
@@ -706,11 +863,13 @@ export async function getAdminOverview() {
       profiles: profiles[0]?.count ?? 0,
       briefs: briefs[0]?.count ?? 0,
       matches: matches[0]?.count ?? 0,
-      decisions: decisions[0]?.count ?? 0
+      decisions: decisions[0]?.count ?? 0,
+      threads: threads[0]?.count ?? 0
     },
     users: recentUsers,
     matches: recentMatches,
     decisions: recentDecisions,
+    threads: recentThreads.map((item) => publicThread(item, item.match_id)),
     decisionStats
   };
 }

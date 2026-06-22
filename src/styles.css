@@ -1146,8 +1146,123 @@ li {
   font-weight: 800;
 }
 
+.meeting-options button.active,
+.time-slots button.active {
+  color: #07110e;
+  background: var(--accent);
+  border-color: transparent;
+}
+
 .meeting-options svg {
   color: var(--accent);
+}
+
+.meeting-options button.active svg {
+  color: #07110e;
+}
+
+.thread-composer {
+  width: 100%;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.052);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  text-align: left;
+}
+
+.thread-head,
+.thread-summary,
+.time-slots {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.thread-head {
+  justify-content: space-between;
+}
+
+.thread-head span,
+.thread-head strong,
+.question-box span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+  text-transform: lowercase;
+}
+
+.thread-head svg {
+  color: var(--sky);
+}
+
+.question-box {
+  display: grid;
+  gap: 8px;
+}
+
+.question-box textarea {
+  resize: none;
+  width: 100%;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  outline: 0;
+  padding: 12px;
+  line-height: 1.45;
+}
+
+.question-box textarea:focus {
+  border-color: rgba(116, 240, 196, 0.38);
+}
+
+.thread-summary,
+.time-slots {
+  flex-wrap: wrap;
+}
+
+.thread-summary span,
+.time-slots button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  color: var(--secondary);
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 11px;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.thread-timeline {
+  display: grid;
+  gap: 8px;
+}
+
+.thread-timeline article {
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.thread-timeline span {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.thread-timeline p {
+  color: var(--secondary);
+  line-height: 1.4;
 }
 
 .radar-card,
