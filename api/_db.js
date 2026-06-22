@@ -5,6 +5,7 @@ import {
   buildAppDataFromMatch,
   normalizeCandidateProfile,
   normalizeHiringBrief,
+  pluralRu,
   scoreMatch
 } from "./_matcher.js";
 
@@ -378,7 +379,7 @@ export async function getBootstrap() {
       hidden: Math.max(38, briefCount * 9 + 2),
       briefCount: Math.max(1, briefCount),
       profileCount: Math.max(1, profileCount),
-      candidateTitle: `Сегодня нашли ${Math.max(1, briefCount)} варианта`,
+      candidateTitle: `Сегодня нашли ${Math.max(1, briefCount)} ${pluralRu(Math.max(1, briefCount), "вариант", "варианта", "вариантов")}`,
       employerTitle: `${Math.max(1, profileCount)} человек подходят под задачу`,
       employerHidden:
         "Слабые совпадения скрыты: не сошлись зарплата, формат, задача или доказательства."

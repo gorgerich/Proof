@@ -56,6 +56,16 @@ function fitLabel(score, mode = "profile") {
   return `${score}% ${mode === "task" ? "по задаче" : "по профилю"}`;
 }
 
+export function pluralRu(count, one, few, many) {
+  const value = Math.abs(Number(count));
+  const mod10 = value % 10;
+  const mod100 = value % 100;
+
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+  return many;
+}
+
 function salaryRange(left, right) {
   return `${left}-${right} тыс. ₽`;
 }
@@ -79,7 +89,7 @@ function buildMarketRadar(candidate, brief, result, stats = {}) {
   return {
     found,
     hidden,
-    title: `Сегодня нашли ${found} варианта`,
+    title: `Сегодня нашли ${found} ${pluralRu(found, "вариант", "варианта", "вариантов")}`,
     text: `Ещё ${hidden} скрыли: не совпали по зарплате, опыту, формату или доказательствам.`,
     savedSearch: [
       candidate.role,
