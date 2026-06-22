@@ -337,13 +337,11 @@ const screenNames = new Set([
 ]);
 
 function initialScreen() {
-  if (!import.meta.env.DEV) return "welcome";
   const requested = new URLSearchParams(window.location.search).get("screen");
   return screenNames.has(requested) ? requested : "welcome";
 }
 
 function initialMode() {
-  if (!import.meta.env.DEV) return "candidate";
   const requested = new URLSearchParams(window.location.search).get("mode");
   return requested === "employer" ? "employer" : "candidate";
 }
