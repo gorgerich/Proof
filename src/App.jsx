@@ -152,6 +152,118 @@ const detailBlocks = [
   }
 ];
 
+const marketRadar = {
+  found: 4,
+  hidden: 38,
+  title: "Сегодня нашли 4 варианта",
+  text: "Ещё 38 скрыли: не совпали по зарплате, опыту, формату или доказательствам.",
+  savedSearch: ["Продуктовый менеджер", "Удалёнка / гибрид", "260-320 тыс.", "Подписка"],
+  nextCheck: "Следующая тихая проверка — завтра утром",
+  hiddenReasons: [
+    {
+      label: "зарплата",
+      count: 14,
+      text: "вилка ниже твоей границы 260 тыс. ₽"
+    },
+    {
+      label: "формат",
+      count: 11,
+      text: "компания просила офис чаще, чем тебе подходит"
+    },
+    {
+      label: "задача",
+      count: 8,
+      text: "не было близкой задачи на первые месяцы"
+    },
+    {
+      label: "доказательства",
+      count: 5,
+      text: "не хватило явных кейсов под запрос"
+    }
+  ]
+};
+
+const matchDossier = {
+  summary:
+    "Показали, потому что задача, вилка и формат достаточно близко сошлись с твоими границами.",
+  salaryFairness: {
+    label: "в рынке",
+    text: "вилка 260-340 тыс. пересекается с твоей 260-320 тыс."
+  },
+  opener:
+    "Можно начать с вопроса: как устроены эксперименты и кто принимает решения по росту подписки?",
+  fitMap: [
+    {
+      label: "роль",
+      state: "совпало",
+      text: "роль близка к продуктовому росту"
+    },
+    {
+      label: "зарплата",
+      state: "совпало",
+      text: "вилки пересекаются без торга в темноте"
+    },
+    {
+      label: "формат",
+      state: "проверить",
+      text: "офис 2 дня в неделю лучше уточнить"
+    },
+    {
+      label: "задачи",
+      state: "совпало",
+      text: "подписка, retention, платные функции"
+    },
+    {
+      label: "риски",
+      state: "проверить",
+      text: "темп команды, ожидания по аналитике"
+    }
+  ],
+  proof: [
+    "Поднял активацию подписки на 18%",
+    "Собрал процесс growth-экспериментов",
+    "совпали must-have: подписка, аналитика, growth"
+  ],
+  risks: ["офис 2 дня в неделю", "высокая скорость команды", "ожидания по аналитике"]
+};
+
+const evidenceVault = {
+  completeness: 84,
+  title: "Папка доказательств",
+  text: "Здесь не резюме целиком. Только факты, которые помогают объяснить совпадение.",
+  items: [
+    {
+      title: "Поднял активацию подписки на 18%",
+      type: "кейс",
+      status: "сильное доказательство",
+      text: "показывает измеримый результат, а не список обязанностей"
+    },
+    {
+      title: "Собрал процесс growth-экспериментов",
+      type: "кейс",
+      status: "полезный контекст",
+      text: "помогает понять стиль работы и зону силы"
+    },
+    {
+      title: "Навыки: подписка, growth, аналитика, retention",
+      type: "навыки",
+      status: "можно показать компании",
+      text: "совпадает с must-have в брифе"
+    }
+  ],
+  nudges: [
+    "Добавь один артефакт: метрика, экран, схема или короткий разбор.",
+    "Опиши, что было до и что стало после твоего решения."
+  ]
+};
+
+const mutualPipeline = [
+  { label: "интерес", state: "done", text: "обе стороны сказали да" },
+  { label: "вопрос", state: "current", text: "можно уточнить один риск" },
+  { label: "15 минут", state: "next", text: "короткое знакомство без интервью на час" },
+  { label: "интервью", state: "locked", text: "только если после первого шага всё ок" }
+];
+
 const employerFields = [
   "роль",
   "задача на первые 3 месяца",
@@ -165,7 +277,7 @@ const employerFields = [
 const candidateNav = [
   { label: "Главная", icon: Home, screen: "candidate-home" },
   { label: "Матчи", icon: HeartHandshake, screen: "match-detail" },
-  { label: "Профиль", icon: UserRound, screen: "candidate-onboarding" },
+  { label: "Профиль", icon: UserRound, screen: "evidence-vault" },
   { label: "Чаты", icon: MessageCircle, screen: "mutual-match" }
 ];
 
@@ -180,6 +292,10 @@ const fallbackData = {
   candidateMatch,
   employerCandidate,
   detailBlocks,
+  marketRadar,
+  matchDossier,
+  evidenceVault,
+  mutualPipeline,
   stats: {
     candidateTitle: "Нашли 4 варианта",
     employerTitle: "12 человек подходят под задачу",
@@ -191,6 +307,32 @@ const fallbackData = {
     database: false
   }
 };
+
+const screenNames = new Set([
+  "welcome",
+  "auth",
+  "role",
+  "candidate-onboarding",
+  "candidate-home",
+  "match-detail",
+  "evidence-vault",
+  "employer-brief",
+  "employer-shortlist",
+  "mutual-match",
+  "admin"
+]);
+
+function initialScreen() {
+  if (!import.meta.env.DEV) return "welcome";
+  const requested = new URLSearchParams(window.location.search).get("screen");
+  return screenNames.has(requested) ? requested : "welcome";
+}
+
+function initialMode() {
+  if (!import.meta.env.DEV) return "candidate";
+  const requested = new URLSearchParams(window.location.search).get("mode");
+  return requested === "employer" ? "employer" : "candidate";
+}
 
 const detailIcons = [BadgeCheck, FileText, ShieldAlert];
 
@@ -266,8 +408,8 @@ const employerBriefPayload = {
 };
 
 function App() {
-  const [screen, setScreen] = useState("welcome");
-  const [mode, setMode] = useState("candidate");
+  const [screen, setScreen] = useState(initialScreen);
+  const [mode, setMode] = useState(initialMode);
   const [backendData, setBackendData] = useState(fallbackData);
   const [user, setUser] = useState(null);
 
@@ -327,6 +469,7 @@ function App() {
       "candidate-onboarding": CandidateOnboarding,
       "candidate-home": CandidateHome,
       "match-detail": MatchDetail,
+      "evidence-vault": EvidenceVaultScreen,
       "employer-brief": EmployerBrief,
       "employer-shortlist": EmployerShortlist,
       "mutual-match": MutualMatch,
@@ -437,6 +580,7 @@ function AppStatus({ mode, screen, setScreen, user, logout }) {
           if (screen === "role") setScreen("welcome");
           else if (screen === "auth") setScreen("welcome");
           else if (screen === "admin") setScreen(mode === "employer" ? "employer-shortlist" : "candidate-home");
+          else if (screen === "evidence-vault") setScreen("candidate-home");
           else if (mode === "employer") setScreen("employer-shortlist");
           else setScreen("candidate-home");
         }}
@@ -804,45 +948,39 @@ function CandidateOnboarding({ setScreen, saveCandidateProfile, refreshBootstrap
 
 function CandidateHome({ setScreen, data, recordDecision }) {
   const match = data.candidateMatch;
+  const radar = data.marketRadar ?? marketRadar;
 
   return (
     <div className="home-screen">
       <ScreenTitle
         eyebrow="сегодня"
-        title={data.stats?.candidateTitle ?? fallbackData.stats.candidateTitle}
-        text={match.hidden}
+        title={radar.title ?? data.stats?.candidateTitle ?? fallbackData.stats.candidateTitle}
+        text={radar.text ?? match.hidden}
       />
 
-      <CandidateJobCard match={match} />
+      <CandidateJobCard
+        match={match}
+        onPass={() =>
+          recordDecision({
+            actor: "candidate",
+            targetId: match.id,
+            action: "pass",
+            data: { screen: "candidate-home" }
+          })
+        }
+        onInterest={() => setScreen("match-detail")}
+      />
 
-      <div className="feed-actions sticky-actions inline">
-        <button
-          className="secondary-cta"
-          onClick={() =>
-            recordDecision({
-              actor: "candidate",
-              targetId: match.id,
-              action: "pass",
-              data: { screen: "candidate-home" }
-            })
-          }
-        >
-          <X size={17} />
-          Не моё
-        </button>
-        <button className="main-cta" onClick={() => setScreen("match-detail")}>
-          Интересно
-          <ArrowRight size={17} />
-        </button>
-      </div>
-
-      <HiddenReasonCard match={match} />
-      <ProfileNudge />
+      <SwipeHint />
+      <MarketRadar data={radar} />
+      <HiddenReasonCard match={match} radar={radar} />
+      <ProfileNudge vault={data.evidenceVault ?? evidenceVault} setScreen={setScreen} />
     </div>
   );
 }
 
-function CandidateJobCard({ match }) {
+function CandidateJobCard({ match, onPass, onInterest }) {
+  const summary = `${match.why[0]}. ${match.salaryNote ?? "вилка близко"}. Детали ниже.`;
   const x = useMotionValue(0);
   const y = useMotionValue(0);
   const rotate = useTransform(x, [-160, 0, 160], [-4, 0, 4]);
@@ -880,10 +1018,23 @@ function CandidateJobCard({ match }) {
       <p className="company-line">{match.company} · {match.location}</p>
       <p className="salary-line">{match.salary}</p>
 
-      <p className="quick-why">
-        Почему подходит: {match.why.slice(0, 3).join(", ")}.
-      </p>
+      <section className="why-preview">
+        <span>Почему показали</span>
+        <p>{summary}</p>
+      </section>
+
       <CheckMini title="Что проверить" items={match.checks} />
+
+      <div className="card-actions candidate-actions">
+        <button className="secondary-cta" onClick={onPass}>
+          <X size={17} />
+          Не моё
+        </button>
+        <button className="main-cta" onClick={onInterest}>
+          Интересно
+          <ArrowRight size={17} />
+        </button>
+      </div>
     </motion.article>
   );
 }
@@ -891,6 +1042,8 @@ function CandidateJobCard({ match }) {
 function MatchDetail({ setScreen, data, recordDecision }) {
   const [open, setOpen] = useState(0);
   const match = data.candidateMatch;
+  const dossier = data.matchDossier ?? matchDossier;
+  const vault = data.evidenceVault ?? evidenceVault;
 
   return (
     <div className="detail-screen">
@@ -906,6 +1059,12 @@ function MatchDetail({ setScreen, data, recordDecision }) {
         <span>{match.company} · {match.salary}</span>
         <small>{match.fit}</small>
       </div>
+
+      <SalaryFairness data={dossier.salaryFairness} />
+
+      <FitMap items={dossier.fitMap} />
+
+      <EvidenceVaultPreview vault={vault} onClick={() => setScreen("evidence-vault")} />
 
       <div className="accordion-stack">
         {data.detailBlocks.map((block, index) => {
@@ -939,6 +1098,8 @@ function MatchDetail({ setScreen, data, recordDecision }) {
           );
         })}
       </div>
+
+      <ConversationOpener text={dossier.opener} />
 
       <HumanNote>
         Это не гарантия оффера. Это честный повод поговорить без холодного
@@ -1035,6 +1196,7 @@ function EmployerBrief({ setScreen, saveEmployerBrief, refreshBootstrap }) {
 
 function EmployerShortlist({ setScreen, data, recordDecision }) {
   const candidate = data.employerCandidate;
+  const vault = data.evidenceVault ?? evidenceVault;
 
   return (
     <div className="shortlist-screen">
@@ -1044,6 +1206,8 @@ function EmployerShortlist({ setScreen, data, recordDecision }) {
         text={data.stats?.employerHidden ?? fallbackData.stats.employerHidden}
       />
 
+      <ShortlistContext />
+
       <article className="match-card employer">
         <div className="card-top">
           <span className="match-badge">{candidate.badge}</span>
@@ -1052,6 +1216,8 @@ function EmployerShortlist({ setScreen, data, recordDecision }) {
         <h2>{candidate.role}</h2>
         <p className="company-line">{candidate.location}</p>
         <p className="salary-line">{candidate.salary}</p>
+
+        <CandidateEvidenceStrip items={vault.items} />
 
         <ReasonBlock title="Почему подходит" items={candidate.why} />
         <ReasonBlock title="Доказательства" items={candidate.proof} />
@@ -1098,7 +1264,9 @@ function EmployerShortlist({ setScreen, data, recordDecision }) {
   );
 }
 
-function MutualMatch({ mode }) {
+function MutualMatch({ mode, data }) {
+  const pipeline = data.mutualPipeline ?? mutualPipeline;
+
   return (
     <div className="mutual-screen">
       <motion.section
@@ -1125,6 +1293,8 @@ function MutualMatch({ mode }) {
           Вы оба хотите поговорить. Теперь можно выбрать удобный формат без
           лишней переписки.
         </p>
+
+        <PipelineSteps items={pipeline} />
 
         <div className="meeting-options">
           <button>
@@ -1153,6 +1323,223 @@ function MutualMatch({ mode }) {
           : "Компания увидит твои кейсы и границы. Не нужно заново объяснять базовые условия."}
       </HumanNote>
     </div>
+  );
+}
+
+function EvidenceVaultScreen({ data }) {
+  const vault = data.evidenceVault ?? evidenceVault;
+  const items = vault.items ?? evidenceVault.items;
+  const nudges = vault.nudges ?? evidenceVault.nudges;
+
+  return (
+    <div className="evidence-screen">
+      <ScreenTitle
+        eyebrow="профиль"
+        title={vault.title}
+        text={vault.text}
+      />
+
+      <section className="vault-score">
+        <div>
+          <span>готовность профиля</span>
+          <strong>{vault.completeness}%</strong>
+        </div>
+        <p>
+          Это не рейтинг человека. Это насколько легко объяснить компаниям,
+          почему тебя стоит увидеть.
+        </p>
+        <div className="vault-meter">
+          <motion.span
+            initial={{ width: 0 }}
+            animate={{ width: `${vault.completeness}%` }}
+            transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+          />
+        </div>
+      </section>
+
+      <div className="evidence-list">
+        {items.map((item) => (
+          <article className="evidence-item" key={`${item.type}-${item.title}`}>
+            <div>
+              <span>{item.type}</span>
+              <strong>{item.title}</strong>
+            </div>
+            <em>{item.status}</em>
+            <p>{item.text}</p>
+          </article>
+        ))}
+      </div>
+
+      <section className="nudge-card">
+        <span>Что можно улучшить</span>
+        <ul className="plain-list">
+          {nudges.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      </section>
+
+      <HumanNote>
+        Сильный профиль — не длинный профиль. Достаточно 2-3 честных доказательств,
+        чтобы матч стал понятнее обеим сторонам.
+      </HumanNote>
+    </div>
+  );
+}
+
+function MarketRadar({ data }) {
+  const savedSearch = data.savedSearch ?? marketRadar.savedSearch;
+  const hiddenReasons = data.hiddenReasons ?? marketRadar.hiddenReasons;
+
+  return (
+    <motion.section
+      className="radar-card"
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.06 }}
+    >
+      <div className="radar-head">
+        <span>
+          <Activity size={16} />
+          тихий радар
+        </span>
+        <strong>{data.nextCheck}</strong>
+      </div>
+
+      <div className="radar-numbers">
+        <div>
+          <strong>{data.found}</strong>
+          <span>показали</span>
+        </div>
+        <div>
+          <strong>{data.hidden}</strong>
+          <span>убрали из шума</span>
+        </div>
+      </div>
+
+      <div className="quiet-tags">
+        {savedSearch.map((item) => (
+          <span key={item}>{item}</span>
+        ))}
+      </div>
+
+      <div className="hidden-reason-grid">
+        {hiddenReasons.map((reason) => (
+          <article key={reason.label}>
+            <strong>{reason.count}</strong>
+            <span>{reason.label}</span>
+            <p>{reason.text}</p>
+          </article>
+        ))}
+      </div>
+    </motion.section>
+  );
+}
+
+function SalaryFairness({ data }) {
+  const value = data ?? matchDossier.salaryFairness;
+
+  return (
+    <article className="salary-fairness">
+      <div>
+        <span>зарплата</span>
+        <strong>{value.label}</strong>
+      </div>
+      <p>{value.text}</p>
+    </article>
+  );
+}
+
+function FitMap({ items }) {
+  const list = items ?? matchDossier.fitMap;
+
+  return (
+    <section className="fit-map-card">
+      <h3>Карта совпадения</h3>
+      <div className="fit-map">
+        {list.map((item) => (
+          <article className={item.state === "совпало" ? "ok" : "check"} key={item.label}>
+            <div>
+              <span>{item.label}</span>
+              <strong>{item.state}</strong>
+            </div>
+            <p>{item.text}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function EvidenceVaultPreview({ vault, onClick }) {
+  const items = vault.items ?? evidenceVault.items;
+
+  return (
+    <motion.button
+      className="vault-preview"
+      onClick={onClick}
+      whileTap={{ scale: 0.985 }}
+    >
+      <div>
+        <span>доказательства</span>
+        <strong>{items.length} факта в профиле</strong>
+        <p>{items[0]?.title}</p>
+      </div>
+      <span className="vault-percent">{vault.completeness}%</span>
+    </motion.button>
+  );
+}
+
+function ConversationOpener({ text }) {
+  return (
+    <article className="opener-card">
+      <span>
+        <MessageCircle size={16} />
+        спокойный старт
+      </span>
+      <p>{text ?? matchDossier.opener}</p>
+    </article>
+  );
+}
+
+function PipelineSteps({ items }) {
+  return (
+    <div className="pipeline-steps">
+      {items.map((item) => (
+        <article className={`pipeline-step ${item.state}`} key={item.label}>
+          <span>{item.label}</span>
+          <p>{item.text}</p>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function ShortlistContext() {
+  return (
+    <section className="shortlist-context">
+      <span>как собрали список</span>
+      <p>
+        Сначала убрали профили, где расходятся задача, вилка или формат. Потом
+        оставили людей, у которых есть доказательства под первые 3 месяца.
+      </p>
+    </section>
+  );
+}
+
+function CandidateEvidenceStrip({ items }) {
+  const list = items ?? evidenceVault.items;
+
+  return (
+    <section className="candidate-evidence-strip">
+      <span>доказательства</span>
+      <div>
+        {list.slice(0, 3).map((item) => (
+          <strong key={item.title}>{item.type}</strong>
+        ))}
+      </div>
+      <p>{list[0]?.title}</p>
+    </section>
   );
 }
 
@@ -1431,11 +1818,13 @@ function CasesStep() {
   );
 }
 
-function HiddenReasonCard({ match }) {
+function HiddenReasonCard({ match, radar }) {
+  const firstReason = radar.hiddenReasons?.[0] ?? marketRadar.hiddenReasons[0];
+
   return (
     <article className="hidden-card">
       <span>Почему мы это скрыли</span>
-      <p>{match.hiddenReason}</p>
+      <p>{firstReason ? `${firstReason.label}: ${firstReason.text}.` : match.hiddenReason}</p>
       <small>Это не отказ. Просто сейчас совпадение слабое.</small>
     </article>
   );
@@ -1476,14 +1865,20 @@ function CheckMini({ title, items }) {
   );
 }
 
-function ProfileNudge() {
+function ProfileNudge({ vault, setScreen }) {
+  const nudge = vault.nudges?.[0] ?? evidenceVault.nudges[0];
+
   return (
     <article className="nudge-card">
       <span>Что можно улучшить в профиле</span>
       <p>
-        Добавь один кейс с цифрами. Тогда мы сможем точнее объяснять компаниям,
+        {nudge} Тогда мы сможем точнее объяснять компаниям,
         почему тебе стоит написать.
       </p>
+      <button className="mini-link" onClick={() => setScreen("evidence-vault")}>
+        Открыть доказательства
+        <ArrowRight size={15} />
+      </button>
     </article>
   );
 }

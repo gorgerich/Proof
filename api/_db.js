@@ -374,7 +374,11 @@ export async function getBootstrap() {
 
   return {
     ...buildAppDataFromMatch(top?.match, top?.candidate, top?.brief, {
-      candidateTitle: `Нашли ${Math.max(1, briefCount)} варианта`,
+      found: Math.max(1, briefCount),
+      hidden: Math.max(38, briefCount * 9 + 2),
+      briefCount: Math.max(1, briefCount),
+      profileCount: Math.max(1, profileCount),
+      candidateTitle: `Сегодня нашли ${Math.max(1, briefCount)} варианта`,
       employerTitle: `${Math.max(1, profileCount)} человек подходят под задачу`,
       employerHidden:
         "Слабые совпадения скрыты: не сошлись зарплата, формат, задача или доказательства."

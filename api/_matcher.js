@@ -56,6 +56,155 @@ function fitLabel(score, mode = "profile") {
   return `${score}% ${mode === "task" ? "по задаче" : "по профилю"}`;
 }
 
+function salaryRange(left, right) {
+  return `${left}-${right} тыс. ₽`;
+}
+
+function matchResult(match, candidate, brief) {
+  const computed = scoreMatch(candidate, brief);
+  return {
+    ...computed,
+    ...match,
+    score: match.score ?? computed.score,
+    reasons: match.reasons?.length ? match.reasons : computed.reasons,
+    proof: match.proof?.length ? match.proof : computed.proof,
+    risks: match.risks?.length ? match.risks : computed.risks
+  };
+}
+
+function buildMarketRadar(candidate, brief, result, stats = {}) {
+  const found = stats.found ?? stats.briefCount ?? 4;
+  const hidden = stats.hidden ?? Math.max(38, found * 9 + 2);
+
+  return {
+    found,
+    hidden,
+    title: `Сегодня нашли ${found} варианта`,
+    text: `Ещё ${hidden} скрыли: не совпали по зарплате, опыту, формату или доказательствам.`,
+    savedSearch: [
+      candidate.role,
+      candidate.formats.slice(0, 2).join(" / "),
+      salaryRange(candidate.salaryMin, candidate.salaryMax),
+      candidate.tasks[0] ?? "задачи роста"
+    ],
+    nextCheck: "Следующая тихая проверка — завтра утром",
+    hiddenReasons: [
+      {
+        label: "зарплата",
+        count: Math.ceil(hidden * 0.36),
+        text: `вилка ниже твоей границы ${candidate.salaryMin} тыс. ₽`
+      },
+      {
+        label: "формат",
+        count: Math.ceil(hidden * 0.28),
+        text: candidate.formats.includes("Удалёнка")
+          ? "компания просила офис чаще, чем тебе подходит"
+          : "условия работы надо сверить заранее"
+      },
+      {
+        label: "задача",
+        count: Math.ceil(hidden * 0.22),
+        text: "не было близкой задачи на первые месяцы"
+      },
+      {
+        label: "доказательства",
+        count: Math.max(1, hidden - Math.ceil(hidden * 0.86)),
+        text: result.proof.length
+          ? "не хватило явных кейсов под запрос"
+          : "профиль пока не объяснял силу кандидата"
+      }
+    ]
+  };
+}
+
+function buildMatchDossier(result, candidate, brief) {
+  return {
+    summary:
+      "Показали, потому что задача, вилка и формат достаточно близко сошлись с твоими границами.",
+    salaryFairness: {
+      label: result.salaryOverlap ? "в рынке" : "нужно сверить",
+      text: result.salaryOverlap
+        ? `вилка ${salaryRange(brief.salaryMin, brief.salaryMax)} пересекается с твоей ${salaryRange(candidate.salaryMin, candidate.salaryMax)}`
+        : `компания указала ${salaryRange(brief.salaryMin, brief.salaryMax)}, а твоя граница ${candidate.salaryMin} тыс. ₽`
+    },
+    opener:
+      "Можно начать с вопроса: как устроены эксперименты и кто принимает решения по росту подписки?",
+    fitMap: [
+      {
+        label: "роль",
+        state: "совпало",
+        text: `${brief.role} близко к твоему направлению: ${candidate.role}`
+      },
+      {
+        label: "зарплата",
+        state: result.salaryOverlap ? "совпало" : "проверить",
+        text: result.salaryOverlap
+          ? "вилки пересекаются без торга в темноте"
+          : "лучше обсудить вилку до звонка"
+      },
+      {
+        label: "формат",
+        state: result.formatOverlap ? "совпало" : "проверить",
+        text: result.formatOverlap
+          ? `${brief.format} не конфликтует с твоими границами`
+          : `${brief.format} может не подойти`
+      },
+      {
+        label: "задачи",
+        state: "совпало",
+        text: brief.tasks.slice(0, 3).join(", ")
+      },
+      {
+        label: "риски",
+        state: "проверить",
+        text: result.risks.slice(0, 2).join(", ")
+      }
+    ],
+    proof: result.proof.slice(0, 4),
+    risks: result.risks.slice(0, 4)
+  };
+}
+
+function buildEvidenceVault(candidate, result) {
+  const caseItems = candidate.cases.slice(0, 2).map((item, index) => ({
+    title: item,
+    type: "кейс",
+    status: index === 0 ? "сильное доказательство" : "полезный контекст",
+    text:
+      index === 0
+        ? "показывает измеримый результат, а не список обязанностей"
+        : "помогает понять стиль работы и зону силы"
+  }));
+
+  return {
+    completeness: Math.min(92, 54 + caseItems.length * 14 + Math.min(candidate.skills.length, 5) * 2),
+    title: "Папка доказательств",
+    text: "Здесь не резюме целиком. Только факты, которые помогают объяснить совпадение.",
+    items: [
+      ...caseItems,
+      {
+        title: `Навыки: ${candidate.skills.slice(0, 4).join(", ")}`,
+        type: "навыки",
+        status: "можно показать компании",
+        text: result.proof[2] ?? "совпадает с частью must-have"
+      }
+    ],
+    nudges: [
+      "Добавь один артефакт: метрика, экран, схема или короткий разбор.",
+      "Опиши, что было до и что стало после твоего решения."
+    ]
+  };
+}
+
+function buildMutualPipeline() {
+  return [
+    { label: "интерес", state: "done", text: "обе стороны сказали да" },
+    { label: "вопрос", state: "current", text: "можно уточнить один риск" },
+    { label: "15 минут", state: "next", text: "короткое знакомство без интервью на час" },
+    { label: "интервью", state: "locked", text: "только если после первого шага всё ок" }
+  ];
+}
+
 export function normalizeCandidateProfile(data = {}) {
   return {
     role: data.role ?? "Продуктовый менеджер",
@@ -161,20 +310,19 @@ export function scoreMatch(candidateInput, briefInput) {
 }
 
 export function buildCandidateMatch(match, candidate, brief) {
-  const score = match.score ?? scoreMatch(candidate, brief).score;
-  const reasons = match.reasons ?? scoreMatch(candidate, brief).reasons;
-  const risks = match.risks ?? scoreMatch(candidate, brief).risks;
+  const result = matchResult(match, candidate, brief);
 
   return {
     id: match.id,
     role: brief.role,
     company: brief.company,
     location: brief.location,
-    salary: `${brief.salaryMin}-${brief.salaryMax} тыс. ₽`,
-    fit: fitLabel(score),
-    badge: categoryFor(score),
-    why: reasons.slice(0, 3),
-    checks: risks.slice(0, 3),
+    salary: salaryRange(brief.salaryMin, brief.salaryMax),
+    fit: fitLabel(result.score),
+    badge: categoryFor(result.score),
+    why: result.reasons.slice(0, 3),
+    checks: result.risks.slice(0, 3),
+    salaryNote: result.salaryOverlap ? "вилка пересекается" : "зарплату нужно сверить",
     hidden:
       "Часть вариантов скрыта: не совпали по зарплате, формату, задачам или доказательствам.",
     hiddenReason:
@@ -190,7 +338,7 @@ export function buildEmployerCandidate(match, candidate) {
     id: match.id,
     role: candidate.role,
     location: `${candidate.location} / ${candidate.formats[0] ?? "формат гибкий"}`,
-    salary: `${candidate.salaryMin}-${candidate.salaryMax} тыс. ₽`,
+    salary: salaryRange(candidate.salaryMin, candidate.salaryMax),
     fit: fitLabel(score, "task"),
     badge: categoryFor(score),
     why: result.reasons.slice(0, 3),
@@ -211,13 +359,18 @@ export function buildAppDataFromMatch(matchRow, candidateRow, briefRow, stats = 
     proof: matchRow.proof_points ?? [],
     risks: matchRow.risks ?? []
   };
+  const result = matchResult(match, candidate, brief);
 
   return {
     candidateMatch: buildCandidateMatch(match, candidate, brief),
     employerCandidate: buildEmployerCandidate(match, candidate),
-    detailBlocks: matchRow.snapshot?.detailBlocks ?? scoreMatch(candidate, brief).detailBlocks,
+    detailBlocks: matchRow.snapshot?.detailBlocks ?? result.detailBlocks,
+    marketRadar: buildMarketRadar(candidate, brief, result, stats),
+    matchDossier: buildMatchDossier(result, candidate, brief),
+    evidenceVault: buildEvidenceVault(candidate, result),
+    mutualPipeline: buildMutualPipeline(),
     stats: {
-      candidateTitle: stats.candidateTitle ?? "Нашли варианты с понятной причиной",
+      candidateTitle: stats.candidateTitle ?? `Сегодня нашли ${stats.found ?? 4} варианта`,
       employerTitle: stats.employerTitle ?? "Есть короткий список людей под задачу",
       employerHidden:
         stats.employerHidden ??
